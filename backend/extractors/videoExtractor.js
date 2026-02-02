@@ -1,23 +1,52 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 
-// Padrões de anúncios e trackers a serem removidos
+// Padrões de anúncios e trackers a serem removidos (expandido)
 const AD_PATTERNS = [
+    // Google Ads
     /googlesyndication/i,
     /googleadservices/i,
     /doubleclick/i,
     /adservice/i,
     /adsense/i,
+    // Pop networks
     /popads/i,
     /pop\.(js|php)/i,
+    /popup/i,
+    /popunder/i,
+    /popcash/i,
+    // Generic ads
     /ads\./i,
+    /advertisement/i,
+    /banner/i,
+    // Tracking
     /tracker/i,
     /analytics/i,
     /facebook\.net/i,
     /fbcdn/i,
-    /advertisement/i,
-    /popup/i,
-    /banner/i,
+    // Ad networks específicos
+    /propellerads/i,
+    /juicyads/i,
+    /exoclick/i,
+    /trafficjunky/i,
+    /adsterra/i,
+    /clickadu/i,
+    /mgid/i,
+    /taboola/i,
+    /outbrain/i,
+    // Link shorteners com ads
+    /ouo\.io/i,
+    /linkvertise/i,
+    /shrinkme/i,
+    /bc\.vc/i,
+    /bit\.ly\/ad/i,
+    // Crypto miners
+    /coinhive/i,
+    /cryptoloot/i,
+    /minero\.cc/i,
+    // Malware domains comuns
+    /redirect/i,
+    /click\./i,
 ];
 
 // Padrões para encontrar URLs de vídeo

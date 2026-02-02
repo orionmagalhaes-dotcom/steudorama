@@ -21,6 +21,7 @@ import {
     LANGUAGE_OPTIONS,
     sortSourcesByPortuguese,
 } from '@/services/videoSources';
+import SafePlayerWrapper from '@/components/SafePlayerWrapper';
 
 // Extended movie details type
 interface MovieDetails extends Movie {
@@ -324,12 +325,9 @@ function WatchContent() {
                                 </div>
                             </div>
                         ) : videoSources.length > 0 ? (
-                            <iframe
-                                src={videoSources[selectedSource]?.url}
-                                className="absolute inset-0 w-full h-full"
-                                allowFullScreen
-                                allow="autoplay; fullscreen; picture-in-picture"
-                                style={{ border: 'none' }}
+                            <SafePlayerWrapper
+                                source={videoSources[selectedSource]}
+                                onAdBlocked={() => console.log('[Proteção] Anúncio/popup bloqueado')}
                             />
                         ) : (
                             <div className="absolute inset-0 flex items-center justify-center">

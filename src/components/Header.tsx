@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { searchMulti, getImageUrl, Movie } from '@/services/tmdb';
 import { Drama } from '@/types/tmdb';
+import { useAuth } from '@/context/AuthContext';
 
 // Genre IDs from TMDB
 const GENRES = {
@@ -21,6 +22,7 @@ const GENRES = {
 export default function Header() {
     const router = useRouter();
     const pathname = usePathname();
+    const { isAuthenticated, user, logout } = useAuth();
     const [isScrolled, setIsScrolled] = useState(false);
     const [showSearch, setShowSearch] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -28,8 +30,10 @@ export default function Header() {
     const [isSearching, setIsSearching] = useState(false);
     const [showMobileMenu, setShowMobileMenu] = useState(false);
     const [showExploreMenu, setShowExploreMenu] = useState(false);
+    const [showUserMenu, setShowUserMenu] = useState(false);
     const searchRef = useRef<HTMLDivElement>(null);
     const exploreRef = useRef<HTMLLIElement>(null);
+    const userMenuRef = useRef<HTMLDivElement>(null);
     const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
@@ -50,6 +54,9 @@ export default function Header() {
             }
             if (exploreRef.current && !exploreRef.current.contains(event.target as Node)) {
                 setShowExploreMenu(false);
+            }
+            if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+                setShowUserMenu(false);
             }
         };
 
@@ -112,6 +119,17 @@ export default function Header() {
     const getItemPoster = (item: Drama | Movie) => {
         return getImageUrl(item.poster_path, 'w200');
     };
+
+    const handleLogout = () => {
+        logout();
+        setShowUserMenu(false);
+        router.push('/login');
+    };
+
+    // Don't show header on login page
+    if (pathname === '/login') {
+        return null;
+    }
 
     return (
         <header className={`header ${isScrolled ? 'header-scrolled' : ''}`}>
@@ -298,8 +316,61 @@ export default function Header() {
                     </button>
                 )}
 
-                <div className="w-8 h-8 rounded bg-primary flex items-center justify-center text-white font-bold text-sm">
-                    U
+                {/* User Menu */}
+                <div className="relative" ref={userMenuRef}>
+                    {isAuthenticated ? (
+                        <>
+                            <button
+                                onClick={() => setShowUserMenu(!showUserMenu)}
+                                className="w-8 h-8 rounded bg-primary flex items-center justify-center text-white font-bold text-sm hover:bg-primary/80 transition-colors"
+                            >
+                                {user ? user.username.charAt(0).toUpperCase() : 'A'}
+                            </button>
+
+                            {showUserMenu && (
+                                <div className="absolute top-full right-0 mt-2 bg-gray-900 rounded-lg shadow-xl border border-gray-700 py-2 min-w-[180px] z-50">
+                                    <div className="px-4 py-2 border-b border-gray-700">
+                                        <p className="text-white font-medium">{user?.username}</p>
+                                        <p className="text-gray-400 text-xs">{user?.role === 'admin' ? 'Administrador' : 'Usuário'}</p>
+                                    </div>
+
+                                    {user?.role === 'admin' && (
+                                        <Link
+                                            href="/admin"
+                                            className="flex items-center gap-2 px-4 py-2 text-gray-300 hover:text-white hover:bg-gray-800 transition-colors"
+                                            onClick={() => setShowUserMenu(false)}
+                                        >
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                            </svg>
+                                            Painel Admin
+                                        </Link>
+                                    )}
+
+                                    <button
+                                        onClick={handleLogout}
+                                        className="flex items-center gap-2 w-full px-4 py-2 text-red-400 hover:text-red-300 hover:bg-gray-800 transition-colors"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                                        </svg>
+                                        Sair
+                                    </button>
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        <Link
+                            href="/login"
+                            className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/80 text-white rounded-lg font-medium text-sm transition-colors"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+                            </svg>
+                            Entrar
+                        </Link>
+                    )}
                 </div>
             </div>
 
@@ -346,6 +417,46 @@ export default function Header() {
                                     </Link>
                                 </li>
                             ))}
+
+                            {/* Admin and Logout in Mobile Menu */}
+                            {/* Admin and Logout in Mobile Menu */}
+                            {isAuthenticated ? (
+                                <>
+                                    <li className="border-t border-gray-800 pt-2 mt-2">
+                                        <span className="text-gray-500 text-sm">Conta:</span>
+                                    </li>
+                                    {user?.role === 'admin' && (
+                                        <li>
+                                            <Link href="/admin" className="block py-2 text-white hover:text-primary transition-colors" onClick={() => setShowMobileMenu(false)}>
+                                                ⚙️ Painel Admin
+                                            </Link>
+                                        </li>
+                                    )}
+                                    <li>
+                                        <button
+                                            onClick={() => { handleLogout(); setShowMobileMenu(false); }}
+                                            className="block py-2 text-red-400 hover:text-red-300 transition-colors w-full text-left"
+                                        >
+                                            🚪 Sair
+                                        </button>
+                                    </li>
+                                </>
+                            ) : (
+                                <>
+                                    <li className="border-t border-gray-800 pt-2 mt-2">
+                                        <span className="text-gray-500 text-sm">Conta:</span>
+                                    </li>
+                                    <li>
+                                        <Link
+                                            href="/login"
+                                            className="block py-2 text-white hover:text-primary transition-colors font-medium"
+                                            onClick={() => setShowMobileMenu(false)}
+                                        >
+                                            🔐 Entrar
+                                        </Link>
+                                    </li>
+                                </>
+                            )}
                         </ul>
                     </nav>
                 </div>
@@ -353,3 +464,4 @@ export default function Header() {
         </header>
     );
 }
+

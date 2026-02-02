@@ -21,7 +21,6 @@ import {
 } from '@/services/tmdb';
 import HeroBanner from '@/components/HeroBanner';
 import Carousel from '@/components/Carousel';
-
 export default function Home() {
   const router = useRouter();
   const [featuredDrama, setFeaturedDrama] = useState<Drama | null>(null);
@@ -46,6 +45,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+
     async function loadDramas() {
       try {
         // Primeira leva - mais importantes (carregar rápido)
@@ -97,12 +97,12 @@ export default function Home() {
           fetchCrimeDramas(),
         ]);
 
-        setRomanceDramas(romance);
-        setActionDramas(action);
-        setComedyDramas(comedy);
-        setMysteryDramas(mystery);
-        setFantasyDramas(fantasy);
-        setCrimeDramas(crime);
+        setRomanceDramas(romance.results);
+        setActionDramas(action.results);
+        setComedyDramas(comedy.results);
+        setMysteryDramas(mystery.results);
+        setFantasyDramas(fantasy.results);
+        setCrimeDramas(crime.results);
 
       } catch (error) {
         console.error('Erro ao carregar doramas:', error);

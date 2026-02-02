@@ -32,6 +32,11 @@ export default function VideoPlayer({
     const containerRef = useRef<HTMLDivElement>(null);
     const hideControlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+    // Initial log to confirm mount
+    useEffect(() => {
+        console.log('[VideoPlayer] Mounted with src:', src);
+    }, [src]);
+
     useEffect(() => {
         const video = videoRef.current;
         if (!video) return;
@@ -43,7 +48,7 @@ export default function VideoPlayer({
             hls.attachMedia(video);
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
                 setIsLoading(false);
-                if (autoPlay) video.play();
+                if (autoPlay) video.play().catch(e => console.error('AutoPlay error:', e));
             });
             return () => hls.destroy();
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -87,13 +92,28 @@ export default function VideoPlayer({
         };
     }, [onEnded]);
 
-    const togglePlay = () => {
+    const togglePlay = async (e?: React.MouseEvent | React.TouchEvent) => {
+        // Prevent event from bubbling if needed, though with our structured overlay it's safer
+        e?.stopPropagation();
+
         const video = videoRef.current;
         if (!video) return;
-        if (isPlaying) {
-            video.pause();
-        } else {
-            video.play();
+
+        // Ensure controls show up when interacting
+        setShowControls(true);
+        if (hideControlsTimeout.current) clearTimeout(hideControlsTimeout.current);
+        hideControlsTimeout.current = setTimeout(() => {
+            if (!video.paused) setShowControls(false);
+        }, 3000);
+
+        try {
+            if (video.paused) {
+                await video.play();
+            } else {
+                video.pause();
+            }
+        } catch (error) {
+            console.error('Play/Pause error:', error);
         }
     };
 
@@ -156,42 +176,49 @@ export default function VideoPlayer({
     return (
         <div
             ref={containerRef}
-            className="player-container relative group"
+            className="player-container relative group bg-black"
             onMouseMove={handleMouseMove}
             onMouseLeave={() => isPlaying && setShowControls(false)}
         >
             {isLoading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black">
+                <div className="absolute inset-0 flex items-center justify-center bg-black z-50">
                     <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
                 </div>
             )}
+
             <video
                 ref={videoRef}
                 className="w-full h-full object-contain bg-black"
                 poster={poster}
                 playsInline
+            // onClick removed, handled by overlay
+            />
+
+            {/* CLICK OVERLAY - Highest-level transparent layer for video clicking */}
+            <div
+                className="absolute inset-0 z-10 cursor-pointer"
                 onClick={togglePlay}
             />
 
-            {/* Controls overlay */}
+            {/* CONTROLS OVERLAY - z-20, pointer-events-none to let clicks pass to video, but children have pointer-events-auto */}
             <div
-                className={`absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                className={`absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40 transition-opacity duration-300 pointer-events-none z-20 ${showControls ? 'opacity-100' : 'opacity-0'
                     }`}
             >
                 {/* Title */}
                 {title && (
-                    <div className="absolute top-4 left-4">
-                        <h2 className="text-white text-lg font-semibold">{title}</h2>
+                    <div className="absolute top-4 left-4 pointer-events-auto">
+                        <h2 className="text-white text-lg font-semibold drop-shadow-md">{title}</h2>
                     </div>
                 )}
 
                 {/* Center play button */}
                 <button
-                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-primary/90 rounded-full flex items-center justify-center hover:bg-primary transition-colors"
+                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 bg-primary/90 rounded-full flex items-center justify-center hover:bg-primary transition-all hover:scale-110 pointer-events-auto shadow-lg z-30"
                     onClick={togglePlay}
                 >
                     {isPlaying ? (
-                        <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <svg className="w-10 h-10 text-white" fill="currentColor" viewBox="0 0 20 20">
                             <path
                                 fillRule="evenodd"
                                 d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
@@ -199,7 +226,7 @@ export default function VideoPlayer({
                             />
                         </svg>
                     ) : (
-                        <svg className="w-8 h-8 text-white ml-1" fill="currentColor" viewBox="0 0 20 20">
+                        <svg className="w-10 h-10 text-white ml-0.5" fill="currentColor" viewBox="0 0 20 20">
                             <path
                                 fillRule="evenodd"
                                 d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
@@ -210,7 +237,10 @@ export default function VideoPlayer({
                 </button>
 
                 {/* Bottom controls */}
-                <div className="absolute bottom-0 left-0 right-0 p-4">
+                <div
+                    className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/90 to-transparent pointer-events-auto z-30"
+                    onClick={(e) => e.stopPropagation()}
+                >
                     {/* Progress bar */}
                     <input
                         type="range"
@@ -218,15 +248,15 @@ export default function VideoPlayer({
                         max={duration || 100}
                         value={currentTime}
                         onChange={seek}
-                        className="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-primary mb-3"
+                        className="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-primary mb-4 hover:h-2 transition-all"
                     />
 
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
                             {/* Play/Pause */}
-                            <button onClick={togglePlay} className="text-white hover:text-primary transition-colors">
+                            <button onClick={togglePlay} className="text-white hover:text-primary transition-colors p-1">
                                 {isPlaying ? (
-                                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                                    <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
                                         <path
                                             fillRule="evenodd"
                                             d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
@@ -234,7 +264,7 @@ export default function VideoPlayer({
                                         />
                                     </svg>
                                 ) : (
-                                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                                    <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
                                         <path
                                             fillRule="evenodd"
                                             d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
@@ -245,8 +275,8 @@ export default function VideoPlayer({
                             </button>
 
                             {/* Volume */}
-                            <div className="flex items-center gap-2">
-                                <button onClick={toggleMute} className="text-white hover:text-primary transition-colors">
+                            <div className="flex items-center gap-3 group/volume">
+                                <button onClick={toggleMute} className="text-white hover:text-primary transition-colors p-1">
                                     {isMuted || volume === 0 ? (
                                         <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
                                             <path
@@ -272,18 +302,18 @@ export default function VideoPlayer({
                                     step={0.1}
                                     value={isMuted ? 0 : volume}
                                     onChange={changeVolume}
-                                    className="w-20 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-primary"
+                                    className="w-0 sm:w-20 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-primary overflow-hidden transition-all duration-300 opacity-0 sm:opacity-100 group-hover/volume:w-24 group-hover/volume:opacity-100"
                                 />
                             </div>
 
                             {/* Time */}
-                            <span className="text-white text-sm">
+                            <span className="text-white text-sm font-medium">
                                 {formatTime(currentTime)} / {formatTime(duration)}
                             </span>
                         </div>
 
                         {/* Fullscreen */}
-                        <button onClick={toggleFullscreen} className="text-white hover:text-primary transition-colors">
+                        <button onClick={toggleFullscreen} className="text-white hover:text-primary transition-colors p-1">
                             {isFullscreen ? (
                                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path

@@ -1,6 +1,0 @@
-# EuDorama Scraper - Dependências Python
-
-playwright>=1.40.0
-requests>=2.28.0
-schedule>=1.2.0
-python-dotenv>=1.0.0

@@ -3,13 +3,15 @@
  * Substitui o scraper Python - não precisa de Python instalado
  */
 
-const puppeteer = require('puppeteer');
-const fs = require('fs');
-const path = require('path');
+const axios = require('axios');
 
 // Configuração do banco de dados SQLite
 const Database = require('better-sqlite3');
 const dbPath = path.join(__dirname, '..', 'data', 'doramas.db');
+
+// TMDB API KEY (Same as frontend for consistency, or from env)
+const TMDB_API_KEY = process.env.TMDB_API_KEY || '4ba96d0b4ac61abdda626a8c9f3f89bb';
+const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
 // Garante que o diretório existe
 const dataDir = path.dirname(dbPath);
@@ -28,6 +30,8 @@ db.exec(`
         original_title TEXT,
         source_url TEXT,
         source_provider TEXT,
+        poster_path TEXT,
+        origin_country TEXT,
         last_updated DATETIME DEFAULT CURRENT_TIMESTAMP
     );
     
@@ -41,7 +45,8 @@ db.exec(`
         video_url TEXT,
         has_portuguese_sub BOOLEAN DEFAULT FALSE,
         last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (series_id) REFERENCES series(id)
+        FOREIGN KEY (series_id) REFERENCES series(id),
+        UNIQUE(series_id, season_number, episode_number)
     );
 `);
 
@@ -53,27 +58,9 @@ const DORAMA_SITES = [
         listUrl: '/DramaList',
         recentUrl: '/Status/Ongoing',
         selectors: {
-            dramaList: 'table.listing td a',
-            episodeList: 'table.listing td a',
+            dramaList: '.item-drama a, .drama-item a, .list-item a, table.listing td a',
+            episodeList: '.episode-list a, .list-episode a, table.listing td a',
             videoPlayer: 'iframe#myvideo'
-        }
-    },
-    {
-        name: 'KissKH',
-        baseUrl: 'https://kisskh.co',
-        apiUrl: '/api/DramaList/List?status=1&type=0&sub=0&country=0&order=2&pageSize=50',
-        getEpisodes: '/api/DramaList/Drama/',
-        selectors: {
-            videoPlayer: 'video source'
-        }
-    },
-    {
-        name: 'Dramacool',
-        baseUrl: 'https://dramacool.pa',
-        recentUrl: '/recently-added-drama',
-        selectors: {
-            dramaList: '.list-star-video .img a',
-            episodeList: '.list-episode li a'
         }
     }
 ];
@@ -88,10 +75,14 @@ class DoramaScraper {
 
     async init() {
         console.log('🚀 Iniciando scraper de doramas...');
-        this.browser = await puppeteer.launch({
-            headless: 'new',
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
+        try {
+            this.browser = await puppeteer.launch({
+                headless: 'new',
+                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
+            });
+        } catch (e) {
+            console.error('❌ Erro ao iniciar Puppeteer:', e.message);
+        }
     }
 
     async close() {
@@ -101,54 +92,78 @@ class DoramaScraper {
     }
 
     /**
+     * Busca informações no TMDB
+     */
+    async searchTmdb(title) {
+        try {
+            const response = await axios.get(`${TMDB_BASE_URL}/search/tv`, {
+                params: {
+                    api_key: TMDB_API_KEY,
+                    query: title,
+                    language: 'pt-BR'
+                }
+            });
+
+            if (response.data.results && response.data.results.length > 0) {
+                const result = response.data.results[0];
+                return {
+                    tmdb_id: result.id,
+                    poster_path: result.poster_path,
+                    origin_country: result.origin_country ? result.origin_country[0] : 'KR'
+                };
+            }
+        } catch (error) {
+            console.error(`  ⚠️ Erro TMDB para "${title}":`, error.message);
+        }
+        return null;
+    }
+
+    /**
      * Busca lista de doramas recentes
      */
     async scrapeRecentDramas(site) {
+        if (!this.browser) return [];
         const page = await this.browser.newPage();
         const dramas = [];
 
         try {
-            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-            // KissKH usa API
-            if (site.name === 'KissKH') {
-                const response = await page.goto(site.baseUrl + site.apiUrl, {
-                    waitUntil: 'networkidle0',
-                    timeout: 30000
-                });
-                const data = await response.json();
-
-                for (const drama of data.data || []) {
-                    dramas.push({
-                        title: drama.title,
-                        id: drama.id,
-                        url: `${site.baseUrl}/Drama/${drama.id}`,
-                        episodes: drama.episodesCount
-                    });
+            // Bloqueia imagens e outros recursos pesados
+            await page.setRequestInterception(true);
+            page.on('request', (req) => {
+                if (['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())) {
+                    req.abort();
+                } else {
+                    req.continue();
                 }
-            } else {
-                // HTML scraping para outros sites
-                await page.goto(site.baseUrl + (site.recentUrl || site.listUrl), {
-                    waitUntil: 'domcontentloaded',
-                    timeout: 30000
-                });
+            });
 
-                const links = await page.$$(site.selectors.dramaList);
-                for (const link of links.slice(0, 50)) {
-                    const href = await link.getAttribute('href');
-                    const text = await link.textContent();
-                    if (href && text) {
-                        dramas.push({
-                            title: text.trim(),
-                            url: href.startsWith('http') ? href : site.baseUrl + href
-                        });
-                    }
+            console.log(`  🌐 Acessando ${site.name}...`);
+            await page.goto(site.baseUrl + (site.recentUrl || ''), {
+                waitUntil: 'domcontentloaded',
+                timeout: 30000
+            });
+
+            const links = await page.$$(site.selectors.dramaList);
+            const seen = new Set();
+
+            for (const link of links.slice(0, 30)) {
+                const href = await page.evaluate(el => el.getAttribute('href'), link);
+                const text = await page.evaluate(el => el.textContent, link);
+
+                if (href && text && text.trim().length > 2 && !seen.has(href)) {
+                    seen.add(href);
+                    dramas.push({
+                        title: text.trim(),
+                        url: href.startsWith('http') ? href : site.baseUrl + href
+                    });
                 }
             }
 
-            console.log(`✅ ${site.name}: Encontrados ${dramas.length} doramas`);
+            console.log(`  ✅ ${site.name}: Encontrados ${dramas.length} doramas`);
         } catch (error) {
-            console.error(`❌ Erro ao scrape ${site.name}:`, error.message);
+            console.error(`  ❌ Erro ao scrape ${site.name}:`, error.message);
         } finally {
             await page.close();
         }
@@ -160,6 +175,7 @@ class DoramaScraper {
      * Busca episódios de um dorama
      */
     async scrapeEpisodes(site, dramaUrl) {
+        if (!this.browser) return [];
         const page = await this.browser.newPage();
         const episodes = [];
 
@@ -172,8 +188,9 @@ class DoramaScraper {
 
             const links = await page.$$(site.selectors.episodeList || 'a[href*="Episode"]');
             for (const link of links) {
-                const href = await link.getAttribute('href');
-                const text = await link.textContent();
+                const href = await page.evaluate(el => el.getAttribute('href'), link);
+                const text = await page.evaluate(el => el.textContent, link);
+
                 if (href) {
                     const episodeMatch = text?.match(/Episode\s*(\d+)/i) || href.match(/Episode-?(\d+)/i);
                     episodes.push({
@@ -184,9 +201,9 @@ class DoramaScraper {
                 }
             }
 
-            console.log(`  📺 Encontrados ${episodes.length} episódios`);
+            console.log(`    📺 Encontrados ${episodes.length} episódios`);
         } catch (error) {
-            console.error(`  ❌ Erro ao buscar episódios:`, error.message);
+            console.error(`    ❌ Erro ao buscar episódios:`, error.message);
         } finally {
             await page.close();
         }
@@ -197,22 +214,47 @@ class DoramaScraper {
     /**
      * Salva dorama no banco de dados
      */
-    saveDrama(drama, provider) {
+    async saveDrama(drama, provider) {
+        // Tenta buscar no TMDB primeiro
+        const tmdbData = await this.searchTmdb(drama.title);
+
         const stmt = db.prepare(`
-            INSERT OR REPLACE INTO series (title, original_title, source_url, source_provider, last_updated)
-            VALUES (?, ?, ?, ?, datetime('now'))
+            INSERT INTO series (title, tmdb_id, poster_path, origin_country, source_url, source_provider, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(tmdb_id) DO UPDATE SET
+                last_updated = datetime('now'),
+                source_url = excluded.source_url
         `);
 
-        const result = stmt.run(drama.title, drama.title, drama.url, provider);
-        return result.lastInsertRowid;
+        try {
+            const result = stmt.run(
+                drama.title,
+                tmdbData?.tmdb_id || null,
+                tmdbData?.poster_path || null,
+                tmdbData?.origin_country || 'KR',
+                drama.url,
+                provider
+            );
+
+            if (result.lastInsertRowid > 0) return result.lastInsertRowid;
+
+            // Se não inseriu, pega o ID existente
+            const existing = db.prepare('SELECT id FROM series WHERE tmdb_id = ? OR source_url = ?').get(tmdbData?.tmdb_id, drama.url);
+            return existing ? existing.id : -1;
+        } catch (e) {
+            const existing = db.prepare('SELECT id FROM series WHERE source_url = ?').get(drama.url);
+            return existing ? existing.id : -1;
+        }
     }
 
     /**
      * Salva episódio no banco de dados
      */
     saveEpisode(seriesId, episode) {
+        if (seriesId <= 0) return;
+
         const stmt = db.prepare(`
-            INSERT OR REPLACE INTO episodes (series_id, episode_number, title, source_url, last_updated)
+            INSERT OR IGNORE INTO episodes (series_id, episode_number, title, source_url, last_updated)
             VALUES (?, ?, ?, ?, datetime('now'))
         `);
 
@@ -224,6 +266,7 @@ class DoramaScraper {
      */
     async run() {
         await this.init();
+        if (!this.browser) return;
 
         for (const site of DORAMA_SITES) {
             console.log(`\n📡 Processando ${site.name}...`);
@@ -231,11 +274,11 @@ class DoramaScraper {
             try {
                 const dramas = await this.scrapeRecentDramas(site);
 
-                for (const drama of dramas.slice(0, 20)) {
+                for (const drama of dramas.slice(0, 15)) {
                     console.log(`  🎬 ${drama.title}`);
-                    const seriesId = this.saveDrama(drama, site.name);
+                    const seriesId = await this.saveDrama(drama, site.name);
 
-                    if (drama.url) {
+                    if (seriesId > 0 && drama.url) {
                         const episodes = await this.scrapeEpisodes(site, drama.url);
                         for (const episode of episodes) {
                             this.saveEpisode(seriesId, episode);

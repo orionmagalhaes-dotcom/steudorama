@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: eudorama-backend
+    env: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_VERSION
+        value: 18.0.0
+      - key: TMDB_API_KEY
+        sync: false
+      - key: PORT
+        value: 3001
+    disk:
+      name: eudorama-data
+      mountPath: /data
+      sizeGB: 1

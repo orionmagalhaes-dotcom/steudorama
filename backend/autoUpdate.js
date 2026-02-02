@@ -10,7 +10,8 @@ const path = require('path');
 const cron = require('node-cron');
 
 // Initialize database for caching
-const dbPath = path.join(__dirname, 'content_cache.db');
+// DB path for content cache
+const dbPath = process.env.CACHE_DB_PATH || path.join(__dirname, 'content_cache.db');
 let db;
 
 function initDatabase() {

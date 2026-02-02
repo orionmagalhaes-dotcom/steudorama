@@ -1,13 +1,12 @@
-/**
- * Scraper de Doramas em Node.js
- * Substitui o scraper Python - não precisa de Python instalado
- */
-
+const puppeteer = require('puppeteer');
+const fs = require('fs');
+const path = require('path');
 const axios = require('axios');
 
 // Configuração do banco de dados SQLite
 const Database = require('better-sqlite3');
-const dbPath = path.join(__dirname, '..', 'data', 'doramas.db');
+// DB path: Use /data for persistent storage on Render/Railway, or local if developing
+const dbPath = process.env.DATABASE_PATH || path.join(__dirname, '..', 'data', 'doramas.db');
 
 // TMDB API KEY (Same as frontend for consistency, or from env)
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '4ba96d0b4ac61abdda626a8c9f3f89bb';

@@ -6,6 +6,10 @@ const TMDB_API_KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY || '';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 
+if (!TMDB_API_KEY && typeof window !== 'undefined') {
+    console.warn('[TMDB Service] NEXT_PUBLIC_TMDB_API_KEY is not defined. Please check your environment variables.');
+}
+
 // Image URL helpers
 export const getImageUrl = (path: string | null, size: 'w200' | 'w300' | 'w500' | 'w780' | 'original' = 'w500'): string => {
     if (!path) return '/placeholder-poster.jpg';

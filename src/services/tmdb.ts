@@ -12,12 +12,12 @@ if (!TMDB_API_KEY && typeof window !== 'undefined') {
 
 // Image URL helpers
 export const getImageUrl = (path: string | null, size: 'w200' | 'w300' | 'w500' | 'w780' | 'original' = 'w500'): string => {
-    if (!path) return '/placeholder-poster.jpg';
+    if (!path) return '/placeholder-poster.png';
     return `${TMDB_IMAGE_BASE}/${size}${path}`;
 };
 
 export const getBackdropUrl = (path: string | null, size: 'w780' | 'w1280' | 'original' = 'w1280'): string => {
-    if (!path) return '/placeholder-backdrop.jpg';
+    if (!path) return '/placeholder-backdrop.png';
     return `${TMDB_IMAGE_BASE}/${size}${path}`;
 };
 
